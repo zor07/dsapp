@@ -1,0 +1,173 @@
+// Dance School App — Database Schema
+// Docs: https://dbml.dbdiagram.io/docs
+
+Table users {
+  id integer [primary key]
+  login varchar(100) [not null, unique]
+  password_hash varchar(255) [not null]
+  role varchar(20) [not null]               // 'ADMIN', 'TEACHER', 'STUDENT'
+  active boolean [not null, default: true]  // Деактивация учётки администратором
+  created_at timestamp [default: `now()`]
+}
+
+Table teachers {
+  id integer [primary key]
+  user_id integer [not null, unique]
+  first_name varchar(100) [not null]
+  last_name varchar(100) [not null]
+  patronymic varchar(100)
+  created_at timestamp [default: `now()`]
+}
+
+Table students {
+  id integer [primary key]
+  user_id integer [not null, unique]
+  first_name varchar(100) [not null]        // ФИО ребёнка
+  last_name varchar(100) [not null]
+  patronymic varchar(100)
+  birth_date date [not null]
+  parent_name varchar(255) [not null]       // ФИО родителя / ответственного
+  phone varchar(20) [not null]
+  referral_source varchar(255)              // Откуда узнали о школе
+  created_at timestamp [default: `now()`]
+}
+
+Table branches {
+  id integer [primary key]
+  name varchar(100) [not null]
+  address varchar(255) [not null]
+  created_at timestamp [default: `now()`]
+}
+
+Table halls {
+  id integer [primary key]
+  branch_id integer [not null]
+  name varchar(100) [not null]
+  description varchar(255)
+  created_at timestamp [default: `now()`]
+}
+
+Table groups {
+  id integer [primary key]
+  branch_id integer [not null]
+  teacher_id integer [not null]             // Основной педагог
+  name varchar(100) [not null]
+  age_range varchar(50)
+  created_at timestamp [default: `now()`]
+}
+
+Table student_groups {
+  student_id integer [not null]
+  group_id integer [not null]
+
+  indexes {
+    (student_id, group_id) [pk]
+  }
+}
+
+Table schedule_templates {
+  id integer [primary key]
+  group_id integer [not null]
+  teacher_id integer [not null]
+  hall_id integer [not null]
+  day_of_week integer [not null]            // 1=Пн, 7=Вс
+  start_time time [not null]
+  created_at timestamp [default: `now()`]
+}
+
+Table classes {
+  id integer [primary key]
+  template_id integer                       // null если создано вручную без шаблона
+  group_id integer [not null]
+  teacher_id integer [not null]             // Может отличаться от шаблона (замена)
+  hall_id integer [not null]
+  class_date date [not null]
+  start_time time [not null]
+  cancelled boolean [not null, default: false]
+  created_at timestamp [default: `now()`]
+}
+
+Table attendance {
+  id integer [primary key]
+  class_id integer [not null]
+  student_id integer [not null]
+  present boolean [not null, default: true]
+  comment varchar(255)
+  created_at timestamp [default: `now()`]
+
+  indexes {
+    (class_id, student_id) [unique]
+  }
+}
+
+Table price_list_items {
+  id integer [primary key]
+  name varchar(255) [not null]
+  price numeric(10, 2) [not null]
+  valid_from date [not null]
+  valid_to date                             // null — позиция бессрочная
+  created_at timestamp [default: `now()`]
+}
+
+Table charges {
+  id integer [primary key]
+  student_id integer [not null]
+  price_list_item_id integer [not null]
+  amount numeric(10, 2) [not null]          // Берётся из прайса, но можно изменить вручную
+  paid boolean [not null, default: false]
+  created_by integer [not null]             // user_id администратора
+  created_at timestamp [default: `now()`]
+}
+
+Table payments {
+  id integer [primary key]
+  student_id integer [not null]
+  amount numeric(10, 2) [not null]
+  payment_date date [not null, default: `now()`]
+  received_by integer [not null]            // user_id того кто принял оплату
+  created_at timestamp [default: `now()`]
+}
+
+Table payment_charges {
+  payment_id integer [not null]
+  charge_id integer [not null]
+
+  indexes {
+    (payment_id, charge_id) [pk]
+  }
+}
+
+// Users
+Ref: teachers.user_id - users.id [delete: cascade]
+Ref: students.user_id - users.id [delete: cascade]
+
+// Branches & Halls
+Ref: halls.branch_id > branches.id [delete: restrict]
+
+// Groups
+Ref: groups.branch_id > branches.id [delete: restrict]
+Ref: groups.teacher_id > teachers.id [delete: restrict]
+Ref: student_groups.student_id > students.id [delete: cascade]
+Ref: student_groups.group_id > groups.id [delete: cascade]
+
+// Schedule
+Ref: schedule_templates.group_id > groups.id [delete: restrict]
+Ref: schedule_templates.teacher_id > teachers.id [delete: restrict]
+Ref: schedule_templates.hall_id > halls.id [delete: restrict]
+Ref: classes.template_id > schedule_templates.id [delete: set null]
+Ref: classes.group_id > groups.id [delete: restrict]
+Ref: classes.teacher_id > teachers.id [delete: restrict]
+Ref: classes.hall_id > halls.id [delete: restrict]
+
+// Attendance
+Ref: attendance.class_id > classes.id [delete: cascade]
+Ref: attendance.student_id > students.id [delete: cascade]
+
+// Payments
+Ref: charges.student_id > students.id [delete: restrict]
+Ref: charges.price_list_item_id > price_list_items.id [delete: restrict]
+Ref: charges.created_by > users.id [delete: restrict]
+Ref: payments.student_id > students.id [delete: restrict]
+Ref: payments.received_by > users.id [delete: restrict]
+Ref: payment_charges.payment_id > payments.id [delete: cascade]
+Ref: payment_charges.charge_id > charges.id [delete: restrict]
